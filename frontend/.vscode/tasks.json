@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "upgrade-next-secure",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"add",
+				"next@latest",
+				"eslint-config-next@latest"
+			]
+		}
+	]
+}

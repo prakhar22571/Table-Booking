@@ -1,0 +1,72 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "upgrade-next-secure",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--dir",
+				"frontend",
+				"add",
+				"next@latest",
+				"eslint-config-next@latest"
+			]
+		},
+		{
+			"label": "upgrade-next-secure-npm",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"--prefix",
+				"frontend",
+				"install",
+				"next@latest",
+				"eslint-config-next@latest"
+			]
+		},
+		{
+			"label": "refresh-pnpm-lock",
+			"type": "shell",
+			"command": "corepack",
+			"args": [
+				"pnpm",
+				"--dir",
+				"frontend",
+				"install",
+				"--lockfile-only"
+			]
+		},
+		{
+			"label": "install-pnpm-global",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"install",
+				"-g",
+				"pnpm@10"
+			]
+		},
+		{
+			"label": "sync-pnpm-lock",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--dir",
+				"frontend",
+				"install"
+			]
+		},
+		{
+			"label": "frontend-build-check",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--dir",
+				"frontend",
+				"run",
+				"build"
+			]
+		}
+	]
+}
