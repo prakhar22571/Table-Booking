@@ -15,8 +15,18 @@ import Markdown from "react-markdown";
 
 type ToolExecution = {
   name: string;
-  args: any;
+  args: unknown;
   content: string;
+};
+
+type ChatHistoryItem = {
+  query: string;
+  response: string;
+};
+
+type StreamChunk = {
+  type: "tool_name" | "tool_args" | "tool_content" | "answer";
+  content: unknown;
 };
 
 type Message = {
@@ -64,20 +74,22 @@ export default function Home() {
 
     try {
       // Format the chat history in the required format for the API
-      const chatHistory = messages
-        .map((msg, index) => {
-          if (index === 0) return null; // Skip the initial greeting
+      const chatHistory: ChatHistoryItem[] = messages.reduce(
+        (history: ChatHistoryItem[], msg, index) => {
+          if (index === 0) return history; // Skip the initial greeting
 
           if (index % 2 === 0) {
             // Even indices (after skipping first) are assistant responses
-            return {
+            history.push({
               query: messages[index - 1].text,
               response: msg.text,
-            };
+            });
           }
-          return null;
-        })
-        .filter(Boolean);
+
+          return history;
+        },
+        [],
+      );
 
       const requestBody = {
         query: userMessage,
@@ -137,11 +149,11 @@ export default function Home() {
           if (!line) continue; // Skip empty lines
 
           try {
-            const chunk = JSON.parse(line);
+            const chunk = JSON.parse(line) as StreamChunk;
 
             // Process different chunk types
             if (chunk.type === "tool_name") {
-              tempToolName = chunk.content;
+              tempToolName = String(chunk.content);
               tempToolArgs = null;
               tempToolContent = "";
             } else if (chunk.type === "tool_args") {
@@ -175,7 +187,7 @@ export default function Home() {
                 setCurrentTools([...toolsCollected]);
               }
             } else if (chunk.type === "tool_content") {
-              tempToolContent = chunk.content;
+              tempToolContent = String(chunk.content);
 
               if (tempToolName) {
                 const completedTool: ToolExecution = {
@@ -204,11 +216,11 @@ export default function Home() {
                 tempToolContent = "";
               }
             } else if (chunk.type === "answer") {
-              finalAnswer = chunk.content;
+              finalAnswer = String(chunk.content);
               setTypingMessage(finalAnswer);
             }
-          } catch (e) {
-            console.error("Error processing chunk:", e, "Line:", line);
+          } catch {
+            console.error("Error processing chunk:", line);
           }
         }
 
@@ -303,7 +315,7 @@ export default function Home() {
   };
 
   // Function to format tool args as a pretty JSON string
-  const formatToolArgs = (args: any) => {
+  const formatToolArgs = (args: unknown) => {
     if (args === null || args === undefined) {
       return "{}";
     }
