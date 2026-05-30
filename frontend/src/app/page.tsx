@@ -325,7 +325,7 @@ export default function Home() {
     if (typeof args === "string" && args.trim().startsWith("{")) {
       try {
         return JSON.stringify(JSON.parse(args), null, 2);
-      } catch (e) {
+      } catch {
         // If parsing fails, return the original string
         return args;
       }
