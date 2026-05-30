@@ -1,10 +1,16 @@
 import os
+from pathlib import Path
 
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 
-load_dotenv(find_dotenv())
+_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+load_dotenv(_ENV_PATH, override=True)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+if OPENAI_API_KEY:
+	os.environ.setdefault("OPENAI_API_KEY", OPENAI_API_KEY)
+
+# Do not print sensitive information such as API key lengths in logs.
 
 SERVER_API_KEY = os.getenv("SERVER_API_KEY")
 

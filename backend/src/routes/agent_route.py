@@ -1,7 +1,8 @@
 import json
+import logging
 
 from fastapi import APIRouter, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import HumanMessage, SystemMessage, AnyMessage, AIMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
@@ -17,6 +18,7 @@ from src.utils.utils import verify_token
 
 
 router = APIRouter(prefix=f"/api/{config.API_VERSION}/agent", tags=["AGENT"])
+logger = logging.getLogger(__name__)
 
 
 def format_chat_history(agent_chat_request: AgentChatRequest) -> AnyMessage:
@@ -61,72 +63,42 @@ async def post_chat(
     memory_config = {"configurable": {"thread_id": agent_chat_request.user_id}}
     agent_executor = create_react_agent(model=model, tools=tools, checkpointer=memory)
 
-    async def generate():
-        async for chunk in agent_executor.astream(
-            input={"messages": formatted_chat_history},
-            config=memory_config,
-            stream_mode="updates",
-        ):
-            try:
-                if "agent" in chunk and chunk["agent"]["messages"][0].content != "":
-                    yield (
-                        json.dumps(
-                            {
-                                "type": "answer",
-                                "content": chunk["agent"]["messages"][0].content,
-                            }
+    async def stream_generator():
+        try:
+            async for chunk in agent_executor.astream(
+                input={"messages": formatted_chat_history},
+                config=memory_config,
+                stream_mode="updates",
+            ):
+                try:
+                    # build lines for this chunk and yield them as they come
+                    if "agent" in chunk and chunk["agent"]["messages"][0].content != "":
+                        yield (
+                            json.dumps(
+                                {
+                                    "type": "answer",
+                                    "content": chunk["agent"]["messages"][0].content,
+                                }
+                            )
+                            + "\n"
                         )
-                        + "\n"
-                    )
-                if "agent" in chunk and chunk["agent"]["messages"][0].content == "":
-                    for message in chunk["agent"]["messages"]:
-                        for tool in message.additional_kwargs["tool_calls"]:
-                            yield (
-                                json.dumps(
-                                    {
-                                        "type": "tool_name",
-                                        "content": tool["function"]["name"],
-                                    }
-                                )
-                                + "\n"
-                            )
-                            if tool["function"]["arguments"] == {}:
-                                yield (
-                                    json.dumps(
-                                        {
-                                            "type": "tool_args",
-                                            "content": "No arguments",
-                                        }
-                                    )
-                                    + "\n"
-                                )
-                            else:
-                                yield (
-                                    json.dumps(
-                                        {
-                                            "type": "tool_args",
-                                            "content": tool["function"]["arguments"],
-                                        }
-                                    )
-                                    + "\n"
-                                )
-                if "tools" in chunk:
-                    for tool in chunk["tools"]["messages"]:
-                        if tool.content != "":
-                            yield (
-                                json.dumps(
-                                    {
-                                        "type": "tool_content",
-                                        "content": tool.content,
-                                    }
-                                )
-                                + "\n"
-                            )
-            except Exception as e:
-                print(f"Error at /agent/chat: {e}")
-                yield (
-                    json.dumps({"type": "answer", "content": config.ERROR_MESSAGE})
-                    + "\n"
-                )
+                    if "agent" in chunk and chunk["agent"]["messages"][0].content == "":
+                        for message in chunk["agent"]["messages"]:
+                            for tool in message.additional_kwargs.get("tool_calls", []):
+                                yield json.dumps({"type": "tool_name", "content": tool["function"]["name"]}) + "\n"
+                                if tool["function"].get("arguments", {}) == {}:
+                                    yield json.dumps({"type": "tool_args", "content": "No arguments"}) + "\n"
+                                else:
+                                    yield json.dumps({"type": "tool_args", "content": tool["function"]["arguments"]}) + "\n"
+                    if "tools" in chunk:
+                        for tool in chunk["tools"]["messages"]:
+                            if tool.content != "":
+                                yield json.dumps({"type": "tool_content", "content": tool.content}) + "\n"
+                except Exception:
+                    logger.exception("Error while processing agent chunk")
+                    yield json.dumps({"type": "answer", "content": config.ERROR_MESSAGE}) + "\n"
+        except Exception:
+            logger.exception("Unhandled error in /agent/chat stream")
+            yield json.dumps({"type": "answer", "content": config.ERROR_MESSAGE}) + "\n"
 
-    return StreamingResponse(generate(), media_type="application/json")
+    return StreamingResponse(stream_generator(), media_type="text/plain")

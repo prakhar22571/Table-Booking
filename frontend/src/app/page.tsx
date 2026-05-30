@@ -1,282 +1,306 @@
-"use client"
+"use client";
 
-import React, { KeyboardEvent, useEffect, useRef, useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Avatar } from "@/components/ui/avatar"
-import { Send, ChevronDown, ChevronUp } from "lucide-react"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import Markdown from "react-markdown"
+import React, { KeyboardEvent, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { Avatar } from "@/components/ui/avatar";
+import { Send, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import Markdown from "react-markdown";
 
 type ToolExecution = {
-  name: string
-  args: any
-  content: string
-}
+  name: string;
+  args: any;
+  content: string;
+};
 
 type Message = {
-  id: number
-  text: string
-  sender: "user" | "assistant"
-  tools?: ToolExecution[]
-}
+  id: number;
+  text: string;
+  sender: "user" | "assistant";
+  tools?: ToolExecution[];
+};
 
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([
-    { id: 1, text: "Hello! How can I help you today?", sender: "assistant" }
-  ])
-  const [newMessage, setNewMessage] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [typingMessage, setTypingMessage] = useState("")
-  const [currentTools, setCurrentTools] = useState<ToolExecution[]>([])
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const [openStates, setOpenStates] = useState<Record<number, boolean>>({})
-  const [currentToolsOpen, setCurrentToolsOpen] = useState<boolean>(true)
+    { id: 1, text: "Hello! How can I help you today?", sender: "assistant" },
+  ]);
+  const [newMessage, setNewMessage] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [typingMessage, setTypingMessage] = useState("");
+  const [currentTools, setCurrentTools] = useState<ToolExecution[]>([]);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [openStates, setOpenStates] = useState<Record<number, boolean>>({});
+  const [currentToolsOpen, setCurrentToolsOpen] = useState<boolean>(true);
+
+  const backendUrl =
+    process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+  const backendApiKey = process.env.NEXT_PUBLIC_BACKEND_API_KEY;
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
 
   useEffect(() => {
-    scrollToBottom()
-  }, [messages, currentTools, openStates, currentToolsOpen])
-
+    scrollToBottom();
+  }, [messages, currentTools, openStates, currentToolsOpen]);
 
   const toggleMessageTools = (messageId: number) => {
-    setOpenStates(current => ({
+    setOpenStates((current) => ({
       ...current,
-      [messageId]: !(current[messageId] ?? true)
-    }))
-  }
+      [messageId]: !(current[messageId] ?? true),
+    }));
+  };
 
   const callChatAPI = async (userMessage: string) => {
-    setIsLoading(true)
-    setCurrentTools([])
-    setTypingMessage("")
+    setIsLoading(true);
+    setCurrentTools([]);
+    setTypingMessage("");
 
     try {
-
       // Format the chat history in the required format for the API
-      const chatHistory = messages.map((msg, index) => {
-        if (index === 0) return null // Skip the initial greeting
+      const chatHistory = messages
+        .map((msg, index) => {
+          if (index === 0) return null; // Skip the initial greeting
 
-        if (index % 2 === 0) { // Even indices (after skipping first) are assistant responses
-          return {
-            query: messages[index - 1].text,
-            response: msg.text
+          if (index % 2 === 0) {
+            // Even indices (after skipping first) are assistant responses
+            return {
+              query: messages[index - 1].text,
+              response: msg.text,
+            };
           }
-        }
-        return null
-      }).filter(Boolean)
-
+          return null;
+        })
+        .filter(Boolean);
 
       const requestBody = {
         query: userMessage,
         chat_history: chatHistory,
-        user_id: "abcd-efgh-ijkl-mnop"
+        user_id: "abcd-efgh-ijkl-mnop",
+      };
+
+      if (!backendApiKey) {
+        throw new Error(
+          "Backend API key is missing in the frontend environment.",
+        );
       }
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v0/agent/chat`, {
+      const response = await fetch(`${backendUrl}/api/v0/agent/chat`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.NEXT_PUBLIC_BACKEND_API_KEY}`
+          Authorization: `Bearer ${backendApiKey}`,
         },
-        body: JSON.stringify(requestBody)
-      })
+        body: JSON.stringify(requestBody),
+      });
 
       if (!response.ok) {
-        throw new Error(`API request failed with status ${response.status}`)
+        throw new Error(`API request failed with status ${response.status}`);
       }
 
       if (!response.body) {
-        throw new Error("ReadableStream not supported in this browser.")
+        throw new Error("ReadableStream not supported in this browser.");
       }
 
       // Read the stream
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder("utf-8")
-      let buffer = ""
-      let finalAnswer = ""
-      let tempToolName = ""
-      let tempToolArgs = null
-      let tempToolContent = ""
-      let toolsCollected: ToolExecution[] = []
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      let finalAnswer = "";
+      let tempToolName = "";
+      let tempToolArgs = null;
+      let tempToolContent = "";
+      let toolsCollected: ToolExecution[] = [];
 
       while (true) {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
 
         if (done) {
-          break
+          break;
         }
 
         // Decode the chunk and add to buffer
-        buffer += decoder.decode(value, { stream: true })
+        buffer += decoder.decode(value, { stream: true });
 
         // Split by newlines to get individual JSON objects
-        const lines = buffer.split("\n")
+        const lines = buffer.split("\n");
 
         // Process all complete lines
         for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i].trim()
-          if (!line) continue // Skip empty lines
+          const line = lines[i].trim();
+          if (!line) continue; // Skip empty lines
 
           try {
-            const chunk = JSON.parse(line)
+            const chunk = JSON.parse(line);
 
             // Process different chunk types
             if (chunk.type === "tool_name") {
-              tempToolName = chunk.content
-              tempToolArgs = null
-              tempToolContent = ""
-            }
-            else if (chunk.type === "tool_args") {
+              tempToolName = chunk.content;
+              tempToolArgs = null;
+              tempToolContent = "";
+            } else if (chunk.type === "tool_args") {
               // Parse the content directly - it should be the actual arguments
-              tempToolArgs = chunk.content
+              tempToolArgs = chunk.content;
 
               // Show the tool in progress
               if (tempToolName) {
                 const inProgressTool: ToolExecution = {
                   name: tempToolName,
                   args: tempToolArgs,
-                  content: "Processing..."
-                }
+                  content: "Processing...",
+                };
 
                 // Find if we already have this tool in progress
                 const existingToolIndex = toolsCollected.findIndex(
-                  tool => tool.name === tempToolName && tool.content === "Processing..."
-                )
+                  (tool) =>
+                    tool.name === tempToolName &&
+                    tool.content === "Processing...",
+                );
 
                 if (existingToolIndex >= 0) {
-                  const updatedTools = [...toolsCollected]
-                  updatedTools[existingToolIndex] = inProgressTool
-                  toolsCollected = updatedTools
+                  const updatedTools = [...toolsCollected];
+                  updatedTools[existingToolIndex] = inProgressTool;
+                  toolsCollected = updatedTools;
                 } else {
-                  toolsCollected = [...toolsCollected, inProgressTool]
+                  toolsCollected = [...toolsCollected, inProgressTool];
                 }
 
                 // Update the UI
-                setCurrentTools([...toolsCollected])
+                setCurrentTools([...toolsCollected]);
               }
-            }
-            else if (chunk.type === "tool_content") {
-              tempToolContent = chunk.content
+            } else if (chunk.type === "tool_content") {
+              tempToolContent = chunk.content;
 
               if (tempToolName) {
                 const completedTool: ToolExecution = {
                   name: tempToolName,
                   args: tempToolArgs,
-                  content: tempToolContent
-                }
+                  content: tempToolContent,
+                };
 
                 const existingToolIndex = toolsCollected.findIndex(
-                  tool => tool.name === tempToolName && tool.content === "Processing..."
-                )
+                  (tool) =>
+                    tool.name === tempToolName &&
+                    tool.content === "Processing...",
+                );
 
                 if (existingToolIndex >= 0) {
-                  const updatedTools = [...toolsCollected]
-                  updatedTools[existingToolIndex] = completedTool
-                  toolsCollected = updatedTools
+                  const updatedTools = [...toolsCollected];
+                  updatedTools[existingToolIndex] = completedTool;
+                  toolsCollected = updatedTools;
                 } else {
-                  toolsCollected = [...toolsCollected, completedTool]
+                  toolsCollected = [...toolsCollected, completedTool];
                 }
 
-                setCurrentTools([...toolsCollected])
-                tempToolName = ""
-                tempToolArgs = null
-                tempToolContent = ""
+                setCurrentTools([...toolsCollected]);
+                tempToolName = "";
+                tempToolArgs = null;
+                tempToolContent = "";
               }
-            }
-            else if (chunk.type === "answer") {
-              finalAnswer = chunk.content
-              setTypingMessage(finalAnswer)
+            } else if (chunk.type === "answer") {
+              finalAnswer = chunk.content;
+              setTypingMessage(finalAnswer);
             }
           } catch (e) {
-            console.error("Error processing chunk:", e, "Line:", line)
+            console.error("Error processing chunk:", e, "Line:", line);
           }
         }
 
         // Keep the last partial line in the buffer
-        buffer = lines[lines.length - 1]
+        buffer = lines[lines.length - 1];
       }
 
       // Add the final answer with tools to the messages
       if (finalAnswer) {
+        const newMessageId = messages.length + 2;
 
-        const newMessageId = messages.length + 2
-
-        setMessages(current => [...current, {
-          id: newMessageId,
-          text: finalAnswer,
-          sender: "assistant",
-          tools: toolsCollected.length > 0 ? toolsCollected : undefined
-        }])
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId,
+            text: finalAnswer,
+            sender: "assistant",
+            tools: toolsCollected.length > 0 ? toolsCollected : undefined,
+          },
+        ]);
 
         if (toolsCollected.length > 0) {
-          setOpenStates(current => ({
+          setOpenStates((current) => ({
             ...current,
-            [newMessageId]: true
-          }))
+            [newMessageId]: true,
+          }));
         }
-
       } else {
         // Fallback message
 
-        const newMessageId = messages.length + 2
+        const newMessageId = messages.length + 2;
 
-        setMessages(current => [...current, {
-          id: newMessageId,
-          text: `I have processed your request, but could not generate a proper response.`,
-          sender: "assistant",
-          tools: toolsCollected.length > 0 ? toolsCollected : undefined
-        }])
+        setMessages((current) => [
+          ...current,
+          {
+            id: newMessageId,
+            text: `I have processed your request, but could not generate a proper response.`,
+            sender: "assistant",
+            tools: toolsCollected.length > 0 ? toolsCollected : undefined,
+          },
+        ]);
 
         if (toolsCollected.length > 0) {
-          setOpenStates(current => ({
+          setOpenStates((current) => ({
             ...current,
-            [newMessageId]: true
-          }))
+            [newMessageId]: true,
+          }));
         }
-
       }
     } catch (error) {
-      console.error("Error calling chat API:", error)
+      console.error("Error calling chat API:", error);
       // Show error message
-      setMessages(current => [...current, {
-        id: current.length + 1,
-        text: "Sorry, there was an error processing your request. Please try again later.",
-        sender: "assistant"
-      }])
+      setMessages((current) => [
+        ...current,
+        {
+          id: current.length + 1,
+          text: "Sorry, there was an error processing your request. Please try again later.",
+          sender: "assistant",
+        },
+      ]);
     } finally {
-      setIsLoading(false)
-      setTypingMessage("")
-      setCurrentTools([])
+      setIsLoading(false);
+      setTypingMessage("");
+      setCurrentTools([]);
     }
-  }
+  };
 
   const handleSendMessage = async () => {
     if (newMessage.trim() && !isLoading) {
       // Add user message to chat
-      setMessages(current => [...current, {
-        id: messages.length + 1,
-        text: newMessage,
-        sender: "user"
-      }])
+      setMessages((current) => [
+        ...current,
+        {
+          id: messages.length + 1,
+          text: newMessage,
+          sender: "user",
+        },
+      ]);
 
-      const userMessage = newMessage
-      setNewMessage("")
+      const userMessage = newMessage;
+      setNewMessage("");
 
       // Call API with user message
-      await callChatAPI(userMessage)
+      await callChatAPI(userMessage);
     }
-  }
+  };
 
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
-      handleSendMessage()
+      handleSendMessage();
     }
-  }
+  };
 
   // Function to format tool args as a pretty JSON string
   const formatToolArgs = (args: any) => {
@@ -295,7 +319,7 @@ export default function Home() {
       }
     }
     return String(args);
-  }
+  };
 
   return (
     <div className="flex flex-col h-screen max-w-2xl mx-auto p-4 bg-gray-50">
@@ -313,22 +337,41 @@ export default function Home() {
               )}
 
               <div className="flex flex-col">
-
                 {message.tools && message.tools.length > 0 && (
-                  <Collapsible className="mb-1 w-full" open={openStates[message.id]} onOpenChange={() => toggleMessageTools(message.id)}>
-                    <CollapsibleTrigger asChild className="flex items-center text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
+                  <Collapsible
+                    className="mb-1 w-full"
+                    open={openStates[message.id]}
+                    onOpenChange={() => toggleMessageTools(message.id)}
+                  >
+                    <CollapsibleTrigger
+                      asChild
+                      className="flex items-center text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                    >
                       <div className="flex items-center gap-1">
                         {(openStates[message.id] ?? true) ? (
-                          <><ChevronUp className="h-3 w-3" /><span>Hide execution details ({message.tools.length})</span></>
+                          <>
+                            <ChevronUp className="h-3 w-3" />
+                            <span>
+                              Hide execution details ({message.tools.length})
+                            </span>
+                          </>
                         ) : (
-                          <><ChevronDown className="h-3 w-3" /><span>Show execution details ({message.tools.length})</span></>
+                          <>
+                            <ChevronDown className="h-3 w-3" />
+                            <span>
+                              Show execution details ({message.tools.length})
+                            </span>
+                          </>
                         )}
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="bg-gray-100 p-2 rounded-md mb-1 text-xs font-mono overflow-x-auto">
                         {message.tools.map((tool, index) => (
-                          <div key={index} className="mb-2 pb-2 border-b border-gray-200 last:border-0">
+                          <div
+                            key={index}
+                            className="mb-2 pb-2 border-b border-gray-200 last:border-0"
+                          >
                             <div className="font-bold">Tool: {tool.name}</div>
                             <div className="mt-1">
                               <div className="font-bold">Arguments:</div>
@@ -338,7 +381,9 @@ export default function Home() {
                             </div>
                             <div className="mt-1">
                               <div className="font-bold">Result:</div>
-                              <div className="bg-gray-200 p-1 rounded mt-1">{tool.content}</div>
+                              <div className="bg-gray-200 p-1 rounded mt-1">
+                                {tool.content}
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -347,16 +392,15 @@ export default function Home() {
                   </Collapsible>
                 )}
 
-                <Card className={`p-1 ${message.sender === "user" ? "bg-primary text-primary-foreground" : "bg-white"}`}>
+                <Card
+                  className={`p-1 ${message.sender === "user" ? "bg-primary text-primary-foreground" : "bg-white"}`}
+                >
                   <CardContent className="p-1">
                     <div className="text-sm text-justify">
-                      <Markdown>
-                        {message.text}
-                      </Markdown>
+                      <Markdown>{message.text}</Markdown>
                     </div>
                   </CardContent>
                 </Card>
-
               </div>
 
               {message.sender === "user" && (
@@ -377,23 +421,41 @@ export default function Home() {
               </Avatar>
 
               <div className="flex flex-col">
-
-
                 {currentTools.length > 0 && (
-                  <Collapsible className="mb-1 w-full" open={currentToolsOpen} onOpenChange={setCurrentToolsOpen}>
-                    <CollapsibleTrigger asChild className="flex items-center text-xs text-gray-500 hover:text-gray-700 cursor-pointer">
+                  <Collapsible
+                    className="mb-1 w-full"
+                    open={currentToolsOpen}
+                    onOpenChange={setCurrentToolsOpen}
+                  >
+                    <CollapsibleTrigger
+                      asChild
+                      className="flex items-center text-xs text-gray-500 hover:text-gray-700 cursor-pointer"
+                    >
                       <div className="flex items-center gap-1">
                         {currentToolsOpen ? (
-                          <><ChevronUp className="h-3 w-3" /><span>Hide execution details ({currentTools.length})</span></>
+                          <>
+                            <ChevronUp className="h-3 w-3" />
+                            <span>
+                              Hide execution details ({currentTools.length})
+                            </span>
+                          </>
                         ) : (
-                          <><ChevronDown className="h-3 w-3" /><span>Show execution details ({currentTools.length})</span></>
+                          <>
+                            <ChevronDown className="h-3 w-3" />
+                            <span>
+                              Show execution details ({currentTools.length})
+                            </span>
+                          </>
                         )}
                       </div>
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="bg-gray-100 p-2 rounded-md mb-1 text-xs font-mono overflow-x-auto">
                         {currentTools.map((tool, index) => (
-                          <div key={index} className="mb-2 pb-2 border-b border-gray-200 last:border-0">
+                          <div
+                            key={index}
+                            className="mb-2 pb-2 border-b border-gray-200 last:border-0"
+                          >
                             <div className="font-bold">Tool: {tool.name}</div>
                             <div className="mt-1">
                               <div className="font-bold">Arguments:</div>
@@ -418,14 +480,11 @@ export default function Home() {
                   <Card className="p-1 bg-white">
                     <CardContent className="p-1">
                       <div className="text-sm text-justify">
-                        <Markdown>
-                          {typingMessage}
-                        </Markdown>
+                        <Markdown>{typingMessage}</Markdown>
                       </div>
                     </CardContent>
                   </Card>
                 )}
-
               </div>
             </div>
           </div>
@@ -452,5 +511,5 @@ export default function Home() {
         </Button>
       </div>
     </div>
-  )
+  );
 }
